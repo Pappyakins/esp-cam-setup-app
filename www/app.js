@@ -221,10 +221,56 @@ async function erase() {
   }
 }
 
+// Slide-to-lock: same writes as save(), but the control command is
+// LOCK, so the camera also sets its locked flag and later power-on
+// boots skip setup entirely. Only the setup button reopens setup.
+async function lock() {
+  if (!connected) return;
+  const ssid = $('f-ssid').value.trim();
+  if (!ssid) { status('Wi-Fi name (SSID) cannot be empty.'); return; }
+  try {
+    $('lock-slider').disabled = true;
+    status('Locking these details in the camera…');
+    await writeStr(C_SSID, ssid);
+    await writeStr(C_PASS, $('f-pass').value);            // blank = keep stored password
+    await writeStr(C_NAME, $('f-name').value.trim());
+    await writeStr(C_TO, $('f-to').value.replace(/[^0-9]/g, ''));
+    await writeStr(C_SERVER, $('f-server').value.trim());
+    await writeStr(C_TOKEN, $('f-token').value.trim());
+    expectedDrop = true; // LOCK makes the camera restart and drop the link
+    await writeStr(C_CTRL, 'LOCK');
+    let result = '';
+    try { result = await readStr(C_CTRL); } catch (e) { /* camera may already be restarting */ }
+    try {
+      localStorage.setItem('espSetupDefaults', JSON.stringify({
+        server: $('f-server').value.trim(), token: $('f-token').value.trim(),
+      }));
+    } catch (e) { /* ignore */ }
+    if (result === 'locked' || result === '') {
+      status('Locked. These details are saved in the camera, future boots will skip setup. Hold the setup button while powering on to reopen setup.');
+      log('Settings locked in camera.');
+    } else {
+      status('Camera replied: ' + result);
+    }
+    connected = false;
+    setFormEnabled(false);
+  } catch (e) {
+    expectedDrop = false;
+    status('Lock failed: ' + errText(e));
+    $('lock-slider').disabled = false;
+  } finally {
+    $('lock-slider').value = 0;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   $('btn-scan').onclick = find;
   $('btn-save').onclick = save;
   $('btn-erase').onclick = erase;
+  $('lock-slider').addEventListener('change', () => {
+    if (Number($('lock-slider').value) >= 100) { lock(); }
+    else { $('lock-slider').value = 0; } // half slides snap back
+  });
   setFormEnabled(false);
   if (!window.BleClient) {
     status('Bluetooth LE did not load in this app. Try reinstalling the app.');

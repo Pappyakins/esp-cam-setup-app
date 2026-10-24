@@ -26,6 +26,7 @@
   label:first-of-type { margin-top:0; }
   input { width:100%; padding:11px; font-size:16px; border-radius:9px; border:1px solid var(--line); background:#12141a; color:var(--txt); }
   input:disabled { opacity:.45; }
+  input[type=range] { padding:0; accent-color:var(--gold); }
   .hint { font-size:12px; color:var(--dim); margin-top:4px; }
   #status { font-size:14px; line-height:1.5; min-height:20px; }
   #log { font-size:12px; color:var(--dim); white-space:pre-wrap; margin:0; }
@@ -38,7 +39,7 @@
 <body>
 <header>
   <h1>JakinsCraft <span>ESP Cam Setup</span></h1>
-  <p>Set up a doorbell cam over Bluetooth. Power the camera on, its flash blinks once a second while it waits for this app (5 minutes), then tap Find camera.</p>
+  <p>Set up a doorbell cam over Bluetooth. Power the camera on, its flash blinks once a second while it waits for this app (2 minutes), then tap Find camera.</p>
 </header>
 <main>
   <div class="card">
@@ -73,6 +74,9 @@
     <div class="row">
       <button id="btn-erase" class="danger">Erase camera settings</button>
     </div>
+    <label for="lock-slider">Lock setup in camera</label>
+    <input id="lock-slider" type="range" min="0" max="100" value="0" step="1">
+    <div class="hint">Slide all the way to the right to save these details and lock them in the camera. A locked camera skips setup on later boots and goes straight to its photo. To reopen setup, hold the setup button (GPIO 14 to GND) while powering the camera on.</div>
   </div>
 
   <div class="card">
