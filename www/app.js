@@ -11,6 +11,7 @@ const C_TO     = '8d4f0005-3c2a-4b5e-9f1a-2b3c4d5e6f70';
 const C_SERVER = '8d4f0006-3c2a-4b5e-9f1a-2b3c4d5e6f70';
 const C_TOKEN  = '8d4f0007-3c2a-4b5e-9f1a-2b3c4d5e6f70';
 const C_CTRL   = '8d4f0008-3c2a-4b5e-9f1a-2b3c4d5e6f70';
+const C_STATE  = '8d4f0009-3c2a-4b5e-9f1a-2b3c4d5e6f70';
 
 const $ = (id) => document.getElementById(id);
 const enc = new TextEncoder();
@@ -21,6 +22,7 @@ let connected = false;
 let scanning = false;
 let scanTimer = null;
 let expectedDrop = false; // we told the cam to restart (APPLY / ERASE)
+let lockState = false; // slider state, read from the cam on connect
 let eraseArmed = false;
 let eraseTimer = null;
 const found = new Map(); // deviceId -> display name
@@ -50,6 +52,8 @@ async function writeStr(uuid, s) {
 function onDisconnected() {
   connected = false;
   deviceId = null;
+  lockState = false;
+  $('lock-slider').value = 0;
   setFormEnabled(false);
   if (expectedDrop) { expectedDrop = false; return; } // cam restarted on purpose
   status('Camera disconnected. Power it on in setup mode and tap Find camera to reconnect.');
@@ -144,6 +148,10 @@ async function connectTo(id, name) {
       if (!$('f-server').value && d.server) $('f-server').value = d.server;
       if (!$('f-token').value && d.token) $('f-token').value = d.token;
     } catch (e) { /* ignore */ }
+    // Position the lock slider from the cam's own locked flag.
+    try { lockState = (await readStr(C_STATE)) === 'locked'; }
+    catch (e) { lockState = false; } // older firmware has no state characteristic
+    $('lock-slider').value = lockState ? 100 : 0;
     setFormEnabled(true);
     status('Connected to ' + deviceName + '. Edit the values, then tap Save to camera.');
     log('Connected: ' + deviceName);
@@ -221,13 +229,14 @@ async function erase() {
   }
 }
 
-// Slide-to-lock: same writes as save(), but the control command is
-// LOCK, so the camera also sets its locked flag and later power-on
-// boots skip setup entirely. Only the setup button reopens setup.
+// Lock slider: the slider SHOWS the cam's locked flag, it is not a
+// one-way action. Slide right to save the form and LOCK, slide left to
+// UNLOCK (clears the flag, no restart, the window keeps running).
+// A timeout with no action leaves the flag exactly as it was.
 async function lock() {
   if (!connected) return;
   const ssid = $('f-ssid').value.trim();
-  if (!ssid) { status('Wi-Fi name (SSID) cannot be empty.'); return; }
+  if (!ssid) { status('Wi-Fi name (SSID) cannot be empty.'); $('lock-slider').value = 0; return; }
   try {
     $('lock-slider').disabled = true;
     status('Locking these details in the camera…');
@@ -247,6 +256,7 @@ async function lock() {
       }));
     } catch (e) { /* ignore */ }
     if (result === 'locked' || result === '') {
+      lockState = true;
       status('Locked. These details are saved in the camera, future boots will skip setup. Hold the setup button while powering on to reopen setup.');
       log('Settings locked in camera.');
     } else {
@@ -254,12 +264,36 @@ async function lock() {
     }
     connected = false;
     setFormEnabled(false);
+    $('lock-slider').value = 100;
   } catch (e) {
     expectedDrop = false;
     status('Lock failed: ' + errText(e));
     $('lock-slider').disabled = false;
-  } finally {
+    $('lock-slider').value = 0; // was unlocked before
+  }
+}
+
+async function unlock() {
+  if (!connected) return;
+  try {
+    $('lock-slider').disabled = true;
+    status('Unlocking setup…');
+    await writeStr(C_CTRL, 'UNLOCK');
+    let result = '';
+    try { result = await readStr(C_CTRL); } catch (e) { /* ignore */ }
+    if (result === 'unlocked' || result === '') {
+      lockState = false;
+      status('Unlocked. Future boots will open setup again. The setup window is still running, you can edit and save, or leave it to time out.');
+      log('Setup unlocked.');
+    } else {
+      status('Camera replied: ' + result);
+    }
     $('lock-slider').value = 0;
+    $('lock-slider').disabled = false;
+  } catch (e) {
+    status('Unlock failed: ' + errText(e));
+    $('lock-slider').disabled = false;
+    $('lock-slider').value = 100; // was locked before
   }
 }
 
@@ -268,8 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-save').onclick = save;
   $('btn-erase').onclick = erase;
   $('lock-slider').addEventListener('change', () => {
-    if (Number($('lock-slider').value) >= 100) { lock(); }
-    else { $('lock-slider').value = 0; } // half slides snap back
+    const v = Number($('lock-slider').value);
+    if (v >= 100 && !lockState) { lock(); }
+    else if (v <= 0 && lockState) { unlock(); }
+    else { $('lock-slider').value = lockState ? 100 : 0; } // half slides snap back
   });
   setFormEnabled(false);
   if (!window.BleClient) {
