@@ -52,10 +52,10 @@ async function writeStr(uuid, s) {
 function onDisconnected() {
   connected = false;
   deviceId = null;
+  if (expectedDrop) { expectedDrop = false; setFormEnabled(false); return; } // lock restart: keep slider at locked
   lockState = false;
   $('lock-slider').value = 0;
   setFormEnabled(false);
-  if (expectedDrop) { expectedDrop = false; return; } // cam restarted on purpose
   status('Camera disconnected. Power it on in setup mode and tap Find camera to reconnect.');
 }
 
@@ -303,9 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-erase').onclick = erase;
   $('lock-slider').addEventListener('change', () => {
     const v = Number($('lock-slider').value);
-    if (v >= 100 && !lockState) { lock(); }
-    else if (v <= 0 && lockState) { unlock(); }
-    else { $('lock-slider').value = lockState ? 100 : 0; } // half slides snap back
+    if (v >= 50 && !lockState) { lock(); }
+    else if (v < 50 && lockState) { unlock(); }
+    else { $('lock-slider').value = lockState ? 100 : 0; } // short slides snap back
   });
   setFormEnabled(false);
   if (!window.BleClient) {
